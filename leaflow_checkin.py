@@ -8,6 +8,7 @@ Leaflow 多账号自动签到脚本
 import os
 import time
 import logging
+import traceback
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -494,14 +495,16 @@ class MultiAccountManager:
                 
                 for i, pair in enumerate(account_pairs):
                     if ':' in pair:
-                        email, password = pair.split(':', 1)
+                        email, password, token = pair.split(':', 1)
                         email = email.strip()
                         password = password.strip()
+                        token = token.strip()
                         
                         if email and password:
                             accounts.append({
                                 'email': email,
-                                'password': password
+                                'password': password,
+                                'token': token
                             })
                             logger.info(f"成功添加第 {i+1} 个账号")
                         else:
@@ -520,11 +523,12 @@ class MultiAccountManager:
         # 方法2: 单账号格式
         single_email = os.getenv('LEAFLOW_EMAIL', '').strip()
         single_password = os.getenv('LEAFLOW_PASSWORD', '').strip()
-        
+        single_token = os.getenv('LEAFLOW_TOKEN', '').strip()
         if single_email and single_password:
             accounts.append({
                 'email': single_email,
-                'password': single_password
+                'password': single_password,
+                'token': single_token
             })
             logger.info("加载了单个账号配置")
             return accounts
@@ -541,41 +545,28 @@ class MultiAccountManager:
         """发送API通知"""
         try:
             url = "http://111.11.107.61:30005/send_private_msg"
+            # 构建请求数据
             data = {
                 "user_id": "8739050",
-                "message": [{
-                    "type": "text",
-                    "data": {
-                        "text": f"{message}"
-                    }
-                }]
+                "message": [{"type": "text", "data": {"text": message}}]
             }
             
+            # 从环境变量读取token
+            token = os.getenv('LEAFLOW_API_TOKEN', '').strip()
             # 添加token认证
             headers = {
-                "Authorization": "heiheihaha",
+                "Authorization": token,
                 "Content-Type": "application/json"
             }
             
-            logger.info(f"正在发送API通知")
-            logger.info(f"请求URL: {url}")
-            logger.info(f"请求Headers: {headers}")
-            logger.info(f"请求数据: {data}")
-            
+            logger.info(f"正在发送API通知到 {url}")
             response = requests.post(url, json=data, headers=headers, timeout=10)
             
-            logger.info(f"API通知发送结果")
-            logger.info(f"响应状态码: {response.status_code}")
-            logger.info(f"响应内容: {response.text}")
-            
-            if response.status_code == 200:
-                logger.info("✅ API通知发送成功")
-            else:
-                logger.error(f"❌ API通知发送失败")
+            logger.info(f"API通知发送结果 - 状态码: {response.status_code}, 响应: {response.text}")
+            logger.info(f"✅ API通知发送成功") if response.status_code == 200 else logger.error(f"❌ API通知发送失败")
                 
         except Exception as e:
             logger.error(f"❌ 发送API通知时出错: {e}")
-            import traceback
             logger.error(f"错误详情: {traceback.format_exc()}")
     
     def send_notification(self, results):
