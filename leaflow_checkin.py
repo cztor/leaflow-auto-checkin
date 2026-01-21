@@ -551,11 +551,10 @@ class MultiAccountManager:
                 "message": [{"type": "text", "data": {"text": message}}]
             }
             
-            # 从环境变量读取token
+            # 从环境变量读取token，默认值为heiheihaha
             token = os.getenv('LEAFLOW_TOKEN', '').strip()
-            # 添加token认证
             headers = {
-                "Authorization": token,
+                "Authorization": f"{token}",
                 "Content-Type": "application/json"
             }
             
