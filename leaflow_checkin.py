@@ -544,7 +544,7 @@ class MultiAccountManager:
     def send_api_notification(self, message):
         """发送API通知"""
         try:
-            url = "http://111.11.107.61:3000/send_private_msg"
+            url = "http://111.11.107.61:30005/send_private_msg"
             data = {
                 "user_id": "8739050",
                 "message": [{
@@ -555,7 +555,13 @@ class MultiAccountManager:
                 }]
             }
             
-            response = requests.post(url, json=data, timeout=10)
+            # 添加token认证
+            headers = {
+                "Authorization": "heiheihaha",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(url, json=data, headers=headers, timeout=10)
             if response.status_code == 200:
                 logger.info("API通知发送成功")
             else:
