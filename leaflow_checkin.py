@@ -541,8 +541,39 @@ class MultiAccountManager:
         
         raise ValueError("未找到有效的账号配置")
     
+    def send_api_notification(self, message):
+        """发送API通知"""
+        try:
+            url = "http://111.11.107.61:3000/send_private_msg"
+            data = {
+                "user_id": "8739050",
+                "message": [{
+                    "type": "text",
+                    "data": {
+                        "text": f"{message}"
+                    }
+                }]
+            }
+            
+            response = requests.post(url, json=data, timeout=10)
+            if response.status_code == 200:
+                logger.info("API通知发送成功")
+            else:
+                logger.error(f"API通知发送失败: {response.text}")
+                
+        except Exception as e:
+            logger.error(f"发送API通知时出错: {e}")
+    
     def send_notification(self, results):
         """发送汇总通知到Telegram - 按照指定模板格式"""
+        # 发送API通知
+        if success_count == total_count:
+            api_message = f"所有账号签到成功，共{success_count}个账号"
+        else:
+            api_message = f"部分账号签到失败，成功{success_count}个，失败{total_count - success_count}个"
+        self.send_api_notification(api_message)
+        
+        # 发送Telegram通知
         if not self.telegram_bot_token or not self.telegram_chat_id:
             logger.info("Telegram配置未设置，跳过通知")
             return
@@ -577,13 +608,12 @@ class MultiAccountManager:
                 "text": message,
                 "parse_mode": "HTML"
             }
-            
             response = requests.post(url, data=data, timeout=10)
             if response.status_code == 200:
                 logger.info("Telegram汇总通知发送成功")
             else:
                 logger.error(f"Telegram通知发送失败: {response.text}")
-                
+            self.send_api_notification(message)                
         except Exception as e:
             logger.error(f"发送Telegram通知时出错: {e}")
     
