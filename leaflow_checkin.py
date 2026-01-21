@@ -25,8 +25,6 @@ class LeaflowAutoCheckin:
     def __init__(self, email, password):
         self.email = email
         self.password = password
-        self.telegram_bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '')
-        self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID', '')
         
         if not self.email or not self.password:
             raise ValueError("邮箱和密码不能为空")
@@ -477,8 +475,6 @@ class MultiAccountManager:
     """多账号管理器 - 简化配置版本"""
     
     def __init__(self):
-        self.telegram_bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '')
-        self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID', '')
         self.accounts = self.load_accounts()
     
     def load_accounts(self):
@@ -583,18 +579,14 @@ class MultiAccountManager:
             logger.error(f"错误详情: {traceback.format_exc()}")
     
     def send_notification(self, results):
-        """发送汇总通知到Telegram - 按照指定模板格式"""
-        logger.info("进入send_notification方法")
-        logger.info(f"结果数量: {len(results)}")
-        
+        """发送API通知"""
+        logger.info("开始发送API通知")
         # 确保总是发送API通知，即使发生异常
         try:
             # 构建通知消息
             success_count = sum(1 for _, success, _, _ in results if success)
             total_count = len(results)
             current_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-            
-            logger.info(f"成功数量: {success_count}, 总数量: {total_count}")
             
             # 构建API通知消息
             api_message = f"🎁 Leaflow自动签到通知\n"
@@ -615,13 +607,13 @@ class MultiAccountManager:
                     api_message += f"账号：{masked_email}\n"
                     api_message += f"{status}  {result}\n\n"
             
+            # 发送API通知
             logger.info("准备发送API通知")
-            # 发送API通知（总是发送）
             self.send_api_notification(api_message)
             logger.info("API通知发送完成")
             
         except Exception as e:
-            logger.error(f"构建通知消息时出错: {e}")
+            logger.error(f"构建API通知消息时出错: {e}")
             import traceback
             logger.error(f"错误详情: {traceback.format_exc()}")
             # 即使发生异常，也要尝试发送基本的API通知
@@ -634,33 +626,6 @@ class MultiAccountManager:
             except Exception as e2:
                 logger.error(f"发送基本API通知时出错: {e2}")
                 logger.error(f"错误详情: {traceback.format_exc()}")
-        
-        # 发送Telegram通知（如果配置了）
-        logger.info("准备检查Telegram配置")
-        if not self.telegram_bot_token or not self.telegram_chat_id:
-            logger.info("Telegram配置未设置，跳过通知")
-            return
-        
-        try:
-            # 构建Telegram消息（与API消息格式相同）
-            message = api_message
-            
-            url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
-            data = {
-                "chat_id": self.telegram_chat_id,
-                "text": message,
-                "parse_mode": "HTML"
-            }
-            response = requests.post(url, data=data, timeout=10)
-            if response.status_code == 200:
-                logger.info("Telegram汇总通知发送成功")
-            else:
-                logger.error(f"Telegram通知发送失败: {response.text}")
-                
-        except Exception as e:
-            logger.error(f"发送Telegram通知时出错: {e}")
-            import traceback
-            logger.error(f"错误详情: {traceback.format_exc()}")
     
     def run_all(self):
         """运行所有账号的签到流程"""
