@@ -566,27 +566,16 @@ class MultiAccountManager:
     
     def send_notification(self, results):
         """发送汇总通知到Telegram - 按照指定模板格式"""
-        # 发送API通知
-        if success_count == total_count:
-            api_message = f"所有账号签到成功，共{success_count}个账号"
-        else:
-            api_message = f"部分账号签到失败，成功{success_count}个，失败{total_count - success_count}个"
-        self.send_api_notification(api_message)
-        
-        # 发送Telegram通知
-        if not self.telegram_bot_token or not self.telegram_chat_id:
-            logger.info("Telegram配置未设置，跳过通知")
-            return
-        
         try:
             # 构建通知消息
             success_count = sum(1 for _, success, _, _ in results if success)
             total_count = len(results)
-            current_date = datetime.now().strftime("%Y/%m/%d")
+            current_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             
-            message = f"🎁 Leaflow自动签到通知\n"
-            message += f"📊 成功: {success_count}/{total_count}\n"
-            message += f"📅 签到时间：{current_date}\n\n"
+            # 构建API通知消息
+            api_message = f"🎁 Leaflow自动签到通知\n"
+            api_message += f"📊 成功: {success_count}/{total_count}\n"
+            api_message += f"📅 签到时间：{current_date}\n\n"
             
             for email, success, result, balance in results:
                 # 隐藏邮箱部分字符以保护隐私
@@ -594,13 +583,24 @@ class MultiAccountManager:
                 
                 if success:
                     status = "✅"
-                    message += f"账号：{masked_email}\n"
-                    message += f"{status}  {result}！\n"
-                    message += f"💰  当前总余额：{balance}。\n\n"
+                    api_message += f"账号：{masked_email}\n"
+                    api_message += f"{status}  {result}！\n"
+                    api_message += f"💰  当前总余额：{balance}。\n\n"
                 else:
                     status = "❌"
-                    message += f"账号：{masked_email}\n"
-                    message += f"{status}  {result}\n\n"
+                    api_message += f"账号：{masked_email}\n"
+                    api_message += f"{status}  {result}\n\n"
+            
+            # 发送API通知（总是发送）
+            self.send_api_notification(api_message)
+            
+            # 发送Telegram通知（如果配置了）
+            if not self.telegram_bot_token or not self.telegram_chat_id:
+                logger.info("Telegram配置未设置，跳过通知")
+                return
+            
+            # 构建Telegram消息（与API消息格式相同）
+            message = api_message
             
             url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
             data = {
@@ -613,9 +613,17 @@ class MultiAccountManager:
                 logger.info("Telegram汇总通知发送成功")
             else:
                 logger.error(f"Telegram通知发送失败: {response.text}")
-            self.send_api_notification(message)                
+                
         except Exception as e:
-            logger.error(f"发送Telegram通知时出错: {e}")
+            logger.error(f"发送通知时出错: {e}")
+            # 即使发生异常，也要尝试发送基本的API通知
+            try:
+                success_count = sum(1 for _, success, _, _ in results if success)
+                total_count = len(results)
+                basic_message = f"签到任务完成，成功{success_count}个，失败{total_count - success_count}个"
+                self.send_api_notification(basic_message)
+            except:
+                pass
     
     def run_all(self):
         """运行所有账号的签到流程"""
