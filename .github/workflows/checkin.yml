@@ -33,6 +33,7 @@ jobs:
         LEAFLOW_ACCOUNTS: ${{ secrets.LEAFLOW_ACCOUNTS }}
         LEAFLOW_EMAIL: ${{ secrets.LEAFLOW_EMAIL }}
         LEAFLOW_PASSWORD: ${{ secrets.LEAFLOW_PASSWORD }}
+        LEAFLOW_TOKEN: ${{ secrets.LEAFLOW_TOKEN }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         GITHUB_ACTIONS: true
