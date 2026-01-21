@@ -634,14 +634,18 @@ class MultiAccountManager:
                 
         except Exception as e:
             logger.error(f"发送通知时出错: {e}")
+            import traceback
+            logger.error(f"错误详情: {traceback.format_exc()}")
             # 即使发生异常，也要尝试发送基本的API通知
             try:
                 success_count = sum(1 for _, success, _, _ in results if success)
                 total_count = len(results)
                 basic_message = f"签到任务完成，成功{success_count}个，失败{total_count - success_count}个"
+                logger.info(f"尝试发送基本API通知: {basic_message}")
                 self.send_api_notification(basic_message)
-            except:
-                pass
+            except Exception as e2:
+                logger.error(f"发送基本API通知时出错: {e2}")
+                logger.error(f"错误详情: {traceback.format_exc()}")
     
     def run_all(self):
         """运行所有账号的签到流程"""
