@@ -584,11 +584,17 @@ class MultiAccountManager:
     
     def send_notification(self, results):
         """发送汇总通知到Telegram - 按照指定模板格式"""
+        logger.info("进入send_notification方法")
+        logger.info(f"结果数量: {len(results)}")
+        
+        # 确保总是发送API通知，即使发生异常
         try:
             # 构建通知消息
             success_count = sum(1 for _, success, _, _ in results if success)
             total_count = len(results)
             current_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+            
+            logger.info(f"成功数量: {success_count}, 总数量: {total_count}")
             
             # 构建API通知消息
             api_message = f"🎁 Leaflow自动签到通知\n"
@@ -609,14 +615,33 @@ class MultiAccountManager:
                     api_message += f"账号：{masked_email}\n"
                     api_message += f"{status}  {result}\n\n"
             
+            logger.info("准备发送API通知")
             # 发送API通知（总是发送）
             self.send_api_notification(api_message)
+            logger.info("API通知发送完成")
             
-            # 发送Telegram通知（如果配置了）
-            if not self.telegram_bot_token or not self.telegram_chat_id:
-                logger.info("Telegram配置未设置，跳过通知")
-                return
-            
+        except Exception as e:
+            logger.error(f"构建通知消息时出错: {e}")
+            import traceback
+            logger.error(f"错误详情: {traceback.format_exc()}")
+            # 即使发生异常，也要尝试发送基本的API通知
+            try:
+                success_count = sum(1 for _, success, _, _ in results if success)
+                total_count = len(results)
+                basic_message = f"签到任务完成，成功{success_count}个，失败{total_count - success_count}个"
+                logger.info(f"尝试发送基本API通知: {basic_message}")
+                self.send_api_notification(basic_message)
+            except Exception as e2:
+                logger.error(f"发送基本API通知时出错: {e2}")
+                logger.error(f"错误详情: {traceback.format_exc()}")
+        
+        # 发送Telegram通知（如果配置了）
+        logger.info("准备检查Telegram配置")
+        if not self.telegram_bot_token or not self.telegram_chat_id:
+            logger.info("Telegram配置未设置，跳过通知")
+            return
+        
+        try:
             # 构建Telegram消息（与API消息格式相同）
             message = api_message
             
@@ -633,19 +658,9 @@ class MultiAccountManager:
                 logger.error(f"Telegram通知发送失败: {response.text}")
                 
         except Exception as e:
-            logger.error(f"发送通知时出错: {e}")
+            logger.error(f"发送Telegram通知时出错: {e}")
             import traceback
             logger.error(f"错误详情: {traceback.format_exc()}")
-            # 即使发生异常，也要尝试发送基本的API通知
-            try:
-                success_count = sum(1 for _, success, _, _ in results if success)
-                total_count = len(results)
-                basic_message = f"签到任务完成，成功{success_count}个，失败{total_count - success_count}个"
-                logger.info(f"尝试发送基本API通知: {basic_message}")
-                self.send_api_notification(basic_message)
-            except Exception as e2:
-                logger.error(f"发送基本API通知时出错: {e2}")
-                logger.error(f"错误详情: {traceback.format_exc()}")
     
     def run_all(self):
         """运行所有账号的签到流程"""
