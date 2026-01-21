@@ -561,14 +561,26 @@ class MultiAccountManager:
                 "Content-Type": "application/json"
             }
             
+            logger.info(f"正在发送API通知")
+            logger.info(f"请求URL: {url}")
+            logger.info(f"请求Headers: {headers}")
+            logger.info(f"请求数据: {data}")
+            
             response = requests.post(url, json=data, headers=headers, timeout=10)
+            
+            logger.info(f"API通知发送结果")
+            logger.info(f"响应状态码: {response.status_code}")
+            logger.info(f"响应内容: {response.text}")
+            
             if response.status_code == 200:
-                logger.info("API通知发送成功")
+                logger.info("✅ API通知发送成功")
             else:
-                logger.error(f"API通知发送失败: {response.text}")
+                logger.error(f"❌ API通知发送失败")
                 
         except Exception as e:
-            logger.error(f"发送API通知时出错: {e}")
+            logger.error(f"❌ 发送API通知时出错: {e}")
+            import traceback
+            logger.error(f"错误详情: {traceback.format_exc()}")
     
     def send_notification(self, results):
         """发送汇总通知到Telegram - 按照指定模板格式"""
