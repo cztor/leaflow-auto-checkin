@@ -552,7 +552,7 @@ class MultiAccountManager:
             }
             
             # 从环境变量读取token
-            token = os.getenv('LEAFLOW_API_TOKEN', '').strip()
+            token = os.getenv('LEAFLOW_TOKEN', '').strip()
             # 添加token认证
             headers = {
                 "Authorization": token,
