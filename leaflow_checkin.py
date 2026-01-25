@@ -275,12 +275,14 @@ class LeaflowAutoCheckin:
 
         for attempt in range(max_retries):
             logger.info(f"等待签到页面加载，尝试 {attempt + 1}/{max_retries}")
-            #logger.info(f"等待签到页面加载，尝试 {attempt + 1}/{max_retries}，等待 {wait_time} 秒...")
-            #time.sleep(wait_time)
+            
+            # 收集页面基本信息，便于调试
+            logger.info(f"  当前页面URL: {self.driver.current_url}")
+            logger.info(f"  当前页面标题: {self.driver.title}")
             
             try:
                 # 检查页面是否包含签到相关元素
-                # 使用组合等待条件：DOM就绪 + 核心元素可交互
+                # 使用组合等待条件：DOM就绪 + 核心元素可见
                 WebDriverWait(self.driver, wait_time).until(
                     lambda d: d.execute_script("return document.readyState") == "complete"
                 )
@@ -301,20 +303,31 @@ class LeaflowAutoCheckin:
                             EC.visibility_of_element_located((locator_type, selector))
                     )
                     
-                        # 验证元素可交互状态
-                        if element.is_enabled():
-                            logger.info(f"检测到有效签到元素: {selector}")
-                            return True
+                        # 只要找到可见的签到相关元素，不管是否可用，都认为页面已加载成功
+                        # 已签到状态下的按钮可能是禁用的，所以不能用is_enabled()判断
+                        logger.info(f"检测到签到元素: {selector}")
+                        logger.info(f"  元素可见性: {element.is_displayed()}")
+                        logger.info(f"  元素可用性: {'启用' if element.is_enabled() else '禁用'}")
+                        logger.info(f"  元素文本: '{element.text.strip()}'")
+                        return True
                     except TimeoutException:
                         logger.debug(f"元素定位失败: {selector}，尝试下个策略")
                         continue
                 
-                logger.warning(f"第 {attempt + 1} 次尝试未找到签到按钮，继续等待...")
+                logger.warning(f"第 {attempt + 1} 次尝试未找到签到相关元素")
+                
+                # 尝试获取页面源代码的前2000个字符，便于调试
+                try:
+                    page_source = self.driver.page_source[:2000]
+                    logger.debug(f"页面源码片段: {page_source}...")
+                except Exception as e:
+                    logger.error(f"获取页面源码失败: {e}")
                 
             except TimeoutException:
                 logger.error(f"页面加载超时，重试中... (尝试 {attempt+1})")
             except Exception as e:
                 logger.critical(f"严重错误: {str(e)}")
+                logger.error(f"错误详情: {traceback.format_exc()}")
                 if "net::ERR" in str(e):
                     logger.info("检测到网络错误，立即重试")
                     continue
@@ -438,7 +451,6 @@ class LeaflowAutoCheckin:
                     
         except Exception as e:
             logger.error(f"查找签到按钮时出错: {e}")
-            import traceback
             logger.error(f"错误详情: {traceback.format_exc()}")
             return False
     
@@ -682,7 +694,6 @@ class MultiAccountManager:
             
         except Exception as e:
             logger.error(f"构建API通知消息时出错: {e}")
-            import traceback
             logger.error(f"错误详情: {traceback.format_exc()}")
             # 即使发生异常，也要尝试发送基本的API通知
             try:
