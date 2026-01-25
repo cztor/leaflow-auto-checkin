@@ -271,42 +271,53 @@ class LeaflowAutoCheckin:
     
     def wait_for_checkin_page_loaded(self, max_retries=3, wait_time=20):
         """等待签到页面完全加载，支持重试"""
+        from selenium.common.exceptions import TimeoutException
+
         for attempt in range(max_retries):
-            logger.info(f"等待签到页面加载，尝试 {attempt + 1}/{max_retries}，等待 {wait_time} 秒...")
-            time.sleep(wait_time)
+            logger.info(f"等待签到页面加载，尝试 {attempt + 1}/{max_retries}")
+            #logger.info(f"等待签到页面加载，尝试 {attempt + 1}/{max_retries}，等待 {wait_time} 秒...")
+            #time.sleep(wait_time)
             
             try:
                 # 检查页面是否包含签到相关元素
+                # 使用组合等待条件：DOM就绪 + 核心元素可交互
+                WebDriverWait(self.driver, wait_time).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+            
                 checkin_indicators = [
-                    "button.checkin-btn",  # 优先使用这个选择器
-                    "//button[contains(text(), '立即签到')]",
-                    "//button[contains(text(), '已签到')]",
-                    "//button[contains(text(), '已完成')]",
-                    "//*[contains(text(), '每日签到')]",
-                    "//*[contains(text(), '签到')]"
+                    (By.CSS_SELECTOR, "button.checkin-btn"),  # 首选精确选择器
+                    (By.XPATH, "//button[contains(text(), '立即签到')]"),
+                    (By.XPATH, "//button[contains(text(), '已签到')]"),
+                    (By.XPATH, "//button[contains(text(), '已完成')]"),
+                    (By.XPATH, "//*[contains(text(), '每日签到')]"),
+                    (By.XPATH, "//*[contains(text(), '签到')]")
                 ]
                 
-                for indicator in checkin_indicators:
+                for locator_type, selector in checkin_indicators:
                     try:
-                        if indicator.startswith("//"):
-                            element = WebDriverWait(self.driver, 10).until(
-                                EC.presence_of_element_located((By.XPATH, indicator))
-                            )
-                        else:
-                            element = WebDriverWait(self.driver, 10).until(
-                                EC.presence_of_element_located((By.CSS_SELECTOR, indicator))
-                            )
-                        
-                        if element.is_displayed():
-                            logger.info(f"找到签到页面元素")
+                        # 使用短时等待提高效率
+                        element = WebDriverWait(self.driver, 10).until(
+                            EC.visibility_of_element_located((locator_type, selector))
+                    )
+                    
+                        # 验证元素可交互状态
+                        if element.is_enabled():
+                            logger.info(f"检测到有效签到元素: {selector}")
                             return True
-                    except:
+                    except TimeoutException:
+                        logger.debug(f"元素定位失败: {selector}，尝试下个策略")
                         continue
                 
                 logger.warning(f"第 {attempt + 1} 次尝试未找到签到按钮，继续等待...")
                 
+            except TimeoutException:
+                logger.error(f"页面加载超时，重试中... (尝试 {attempt+1})")
             except Exception as e:
-                logger.warning(f"第 {attempt + 1} 次检查签到页面时出错: {e}")
+                logger.critical(f"严重错误: {str(e)}")
+                if "net::ERR" in str(e):
+                    logger.info("检测到网络错误，立即重试")
+                    continue
         
         return False
     
@@ -671,4 +682,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
