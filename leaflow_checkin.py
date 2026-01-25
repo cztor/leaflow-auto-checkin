@@ -323,10 +323,16 @@ class LeaflowAutoCheckin:
     
     def find_and_click_checkin_button(self):
         """查找并点击签到按钮 - 处理已签到状态"""
-        logger.info("查找签到按钮...")
+        logger.info("开始查找签到按钮...")
+        start_time = time.time()
         
         try:
+            # 收集页面基本信息
+            logger.info(f"当前页面URL: {self.driver.current_url}")
+            logger.info(f"当前页面标题: {self.driver.title}")
+            
             # 先等待页面可能的重载
+            logger.info("等待页面稳定...")
             time.sleep(5)
             
             # 使用和单账号成功时相同的选择器
@@ -339,6 +345,7 @@ class LeaflowAutoCheckin:
             ]
             
             for selector in checkin_selectors:
+                logger.info(f"尝试使用选择器: {selector}")
                 try:
                     if selector.startswith("//"):
                         checkin_btn = WebDriverWait(self.driver, 15).until(
@@ -349,31 +356,82 @@ class LeaflowAutoCheckin:
                             EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                         )
                     
+                    # 详细检查按钮状态
+                    logger.info(f"找到按钮，开始检查状态...")
+                    logger.info(f"按钮可见性: {checkin_btn.is_displayed()}")
+                    logger.info(f"按钮可用性: {checkin_btn.is_enabled()}")
+                    logger.info(f"按钮文本: '{checkin_btn.text.strip()}'")
+                    logger.info(f"按钮位置: {checkin_btn.location}")
+                    logger.info(f"按钮尺寸: {checkin_btn.size}")
+                    logger.info(f"按钮HTML: {checkin_btn.get_attribute('outerHTML')}")
+                    
                     if checkin_btn.is_displayed():
                         # 检查按钮文本，如果包含"已签到"则说明今天已经签到过了
                         btn_text = checkin_btn.text.strip()
-                        if "已签到" in btn_text:
-                            logger.info("伙计，今日你已经签到过了！")
+                        if "已签到" in btn_text or "已完成" in btn_text:
+                            logger.info(f"今日已签到，按钮文本: {btn_text}")
                             return "already_checked_in"
                         
-                        # 检查按钮是否可用
+                        # 尝试多种点击方式
+                        clicked = False
+                        
+                        # 方式1: 直接点击
                         if checkin_btn.is_enabled():
-                            logger.info(f"找到并点击立即签到按钮")
-                            checkin_btn.click()
+                            try:
+                                logger.info("方式1: 尝试直接点击按钮...")
+                                checkin_btn.click()
+                                clicked = True
+                                logger.info("方式1: 直接点击成功")
+                            except Exception as e:
+                                logger.warning(f"方式1: 直接点击失败: {e}")
+                                clicked = False
+                        else:
+                            logger.warning("按钮当前不可用，尝试其他点击方式")
+                        
+                        # 方式2: JavaScript点击
+                        if not clicked:
+                            try:
+                                logger.info("方式2: 尝试JavaScript点击...")
+                                self.driver.execute_script("arguments[0].click();", checkin_btn)
+                                clicked = True
+                                logger.info("方式2: JavaScript点击成功")
+                            except Exception as e:
+                                logger.warning(f"方式2: JavaScript点击失败: {e}")
+                                clicked = False
+                        
+                        # 方式3: ActionChains点击
+                        if not clicked:
+                            try:
+                                logger.info("方式3: 尝试ActionChains点击...")
+                                actions = ActionChains(self.driver)
+                                actions.move_to_element(checkin_btn).click().perform()
+                                clicked = True
+                                logger.info("方式3: ActionChains点击成功")
+                            except Exception as e:
+                                logger.warning(f"方式3: ActionChains点击失败: {e}")
+                                clicked = False
+                        
+                        if clicked:
+                            logger.info(f"成功点击签到按钮，耗时: {time.time() - start_time:.2f}秒")
                             return True
                         else:
-                            logger.info("签到按钮不可用，可能已经签到过了")
-                            return "already_checked_in"
+                            logger.error("所有点击方式均失败")
+                            return False
+                    else:
+                        logger.warning("按钮不可见")
+                        continue
                         
                 except Exception as e:
-                    logger.debug(f"选择器未找到按钮: {e}")
+                    logger.debug(f"选择器{selector}未找到按钮: {e}")
                     continue
             
-            logger.error("找不到签到按钮")
+            logger.error("遍历所有选择器后仍未找到可点击的签到按钮")
             return False
                     
         except Exception as e:
             logger.error(f"查找签到按钮时出错: {e}")
+            import traceback
+            logger.error(f"错误详情: {traceback.format_exc()}")
             return False
     
     def checkin(self):
