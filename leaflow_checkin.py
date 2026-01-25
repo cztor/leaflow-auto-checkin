@@ -361,15 +361,23 @@ class LeaflowAutoCheckin:
                     logger.info(f"按钮可见性: {checkin_btn.is_displayed()}")
                     logger.info(f"按钮可用性: {checkin_btn.is_enabled()}")
                     logger.info(f"按钮文本: '{checkin_btn.text.strip()}'")
-                    logger.info(f"按钮位置: {checkin_btn.location}")
-                    logger.info(f"按钮尺寸: {checkin_btn.size}")
-                    logger.info(f"按钮HTML: {checkin_btn.get_attribute('outerHTML')}")
                     
                     if checkin_btn.is_displayed():
-                        # 检查按钮文本，如果包含"已签到"则说明今天已经签到过了
+                        # 检查按钮文本，如果包含"已签到"或"已完成"则说明今天已经签到过了
                         btn_text = checkin_btn.text.strip()
-                        if "已签到" in btn_text or "已完成" in btn_text:
-                            logger.info(f"今日已签到，按钮文本: {btn_text}")
+                        
+                        # 检查页面上是否有"今日已签到"文本
+                        page_text = self.driver.page_source
+                        
+                        # 综合判断已签到状态：按钮禁用或按钮文本包含"已完成"或页面包含"今日已签到"
+                        if (not checkin_btn.is_enabled() or 
+                            "已完成" in btn_text or 
+                            "今日已签到" in page_text or
+                            "已签到" in btn_text):
+                            logger.info(f"今日已签到，状态信息：")
+                            logger.info(f"  - 按钮状态: {'禁用' if not checkin_btn.is_enabled() else '可用'}")
+                            logger.info(f"  - 按钮文本: '{btn_text}'")
+                            logger.info(f"  - 页面包含'今日已签到': {'是' if '今日已签到' in page_text else '否'}")
                             return "already_checked_in"
                         
                         # 尝试多种点击方式
@@ -386,7 +394,7 @@ class LeaflowAutoCheckin:
                                 logger.warning(f"方式1: 直接点击失败: {e}")
                                 clicked = False
                         else:
-                            logger.warning("按钮当前不可用，尝试其他点击方式")
+                            logger.warning("按钮当前不可用，不应该到达这里，因为已在前面的检查中返回")
                         
                         # 方式2: JavaScript点击
                         if not clicked:
