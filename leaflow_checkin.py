@@ -456,14 +456,39 @@ class LeaflowAutoCheckin:
     
     def checkin(self):
         """执行签到流程"""
-        logger.info("跳转到签到页面...")
+        logger.info("执行签到流程...")
         
         # 跳转到签到页面
-        self.driver.get("https://checkin.leaflow.net")
+        logger.info("跳转到签到页面...")
+        try:
+            # 先访问主站，确保COOKIE有效
+            self.driver.get("https://leaflow.net/dashboard")
+            time.sleep(3)
+            
+            # 再跳转到签到页面
+            self.driver.get("https://checkin.leaflow.net")
+            logger.info(f"当前签到页面URL: {self.driver.current_url}")
+            logger.info(f"当前页面标题: {self.driver.title}")
+        except Exception as e:
+            logger.error(f"跳转签到页面失败: {e}")
+            raise
         
         # 等待签到页面加载（最多重试3次，每次等待20秒）
         if not self.wait_for_checkin_page_loaded(max_retries=3, wait_time=20):
-            raise Exception("签到页面加载失败，无法找到签到相关元素")
+            # 检查是否是502错误
+            if "502 Bad Gateway" in self.driver.title:
+                logger.error("遇到502 Bad Gateway错误，可能是服务器问题或COOKIE失效")
+                # 尝试刷新页面
+                logger.info("尝试刷新页面...")
+                self.driver.refresh()
+                time.sleep(5)
+                # 再次等待页面加载
+                if self.wait_for_checkin_page_loaded(max_retries=2, wait_time=15):
+                    logger.info("刷新后页面加载成功")
+                else:
+                    raise Exception("签到页面加载失败，遇到502 Bad Gateway错误")
+            else:
+                raise Exception("签到页面加载失败，无法找到签到相关元素")
         
         # 查找并点击立即签到按钮
         checkin_result = self.find_and_click_checkin_button()
