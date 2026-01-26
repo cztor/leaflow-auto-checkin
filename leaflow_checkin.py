@@ -557,13 +557,6 @@ class LeaflowAutoCheckin:
                 logger.info(f"当前签到页面URL: {self.driver.current_url}")
                 logger.info(f"当前页面标题: {self.driver.title}")
                 
-                # 获取页面源码（最多前2000字符），便于调试
-                try:
-                    page_source = self.driver.page_source[:2000]
-                    logger.info(f"页面源码片段: {page_source}")
-                except Exception as e:
-                    logger.error(f"获取页面源码失败: {e}")
-                
                 # 简化重定向处理，直接检查当前URL
                 logger.info("检查当前页面状态...")
                 
@@ -1053,4 +1046,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
