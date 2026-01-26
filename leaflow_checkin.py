@@ -487,38 +487,67 @@ class LeaflowAutoCheckin:
         
         # 跳转到签到页面
         logger.info("跳转到签到页面...")
-        try:
-            # 先访问checkin域名主页，设置好域名上下文
-            self.driver.get("https://checkin.leaflow.net")
-            
-            # 添加登录时保存的COOKIE到当前域名
-            logger.info("添加登录COOKIE到checkin域名...")
-            if hasattr(self, 'login_cookies') and self.login_cookies:
-                # 先清除当前页面的COOKIE
-                self.driver.delete_all_cookies()
+        
+        # 网络请求重试设置
+        max_retries = 3
+        retry_delay = 5  # 秒
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                # 设置页面加载超时
+                self.driver.set_page_load_timeout(30)
                 
-                # 添加登录时保存的所有COOKIE
-                for cookie in self.login_cookies:
-                    try:
-                        # 适配不同域名的COOKIE
-                        if 'domain' in cookie and cookie['domain']:
-                            # 如果COOKIE有域名，直接添加
-                            self.driver.add_cookie(cookie)
-                        else:
-                            # 否则，修改为当前域名
-                            cookie_copy = cookie.copy()
-                            cookie_copy['domain'] = '.leaflow.net'  # 设置为主域名，让子域名也能使用
-                            self.driver.add_cookie(cookie_copy)
-                        logger.debug(f"添加COOKIE成功: {cookie['name']}")
-                    except Exception as e:
-                        logger.debug(f"添加COOKIE失败: {cookie['name']} -> {e}")
+                logger.info(f"尝试第 {attempt}/{max_retries} 次访问签到页面...")
+                # 先访问checkin域名主页，设置好域名上下文
+                self.driver.get("https://checkin.leaflow.net")
+                logger.info(f"成功访问签到页面，URL: {self.driver.current_url}")
                 
-                # 重新加载页面，使COOKIE生效
-                logger.info("重新加载页面使COOKIE生效...")
-                self.driver.refresh()
-            
-            logger.info(f"当前签到页面URL: {self.driver.current_url}")
-            logger.info(f"当前页面标题: {self.driver.title}")
+                # 添加登录时保存的COOKIE到当前域名
+                logger.info("添加登录COOKIE到checkin域名...")
+                if hasattr(self, 'login_cookies') and self.login_cookies:
+                    # 先清除当前页面的COOKIE
+                    self.driver.delete_all_cookies()
+                    
+                    # 添加登录时保存的所有COOKIE
+                    for cookie in self.login_cookies:
+                        try:
+                            # 适配不同域名的COOKIE
+                            if 'domain' in cookie and cookie['domain']:
+                                # 如果COOKIE有域名，直接添加
+                                self.driver.add_cookie(cookie)
+                            else:
+                                # 否则，修改为当前域名
+                                cookie_copy = cookie.copy()
+                                cookie_copy['domain'] = '.leaflow.net'  # 设置为主域名，让子域名也能使用
+                                self.driver.add_cookie(cookie_copy)
+                            logger.debug(f"添加COOKIE成功: {cookie['name']}")
+                        except Exception as e:
+                            logger.debug(f"添加COOKIE失败: {cookie['name']} -> {e}")
+                    
+                    # 重新加载页面，使COOKIE生效
+                    logger.info("重新加载页面使COOKIE生效...")
+                    self.driver.refresh()
+                
+                logger.info(f"当前签到页面URL: {self.driver.current_url}")
+                logger.info(f"当前页面标题: {self.driver.title}")
+                break  # 成功访问，跳出重试循环
+                
+            except Exception as e:
+                if "ERR_CONNECTION_TIMED_OUT" in str(e) or "timeout" in str(e).lower():
+                    logger.error(f"第 {attempt} 次访问签到页面超时: {e}")
+                    if attempt < max_retries:
+                        logger.info(f"等待 {retry_delay} 秒后重试...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # 指数退避
+                    else:
+                        logger.error(f"经过 {max_retries} 次重试后仍无法访问签到页面")
+                        raise
+                else:
+                    logger.error(f"访问签到页面时发生其他错误: {e}")
+                    raise
+            finally:
+                # 恢复默认页面加载超时
+                self.driver.set_page_load_timeout(60)
             
             # 等待页面重定向完成
             logger.info("等待页面重定向完成...")
