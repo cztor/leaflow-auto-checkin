@@ -531,16 +531,44 @@ class LeaflowAutoCheckin:
                     
                     # 不使用refresh()，而是直接访问签到首页，避免页面阻塞
                     logger.info("COOKIE添加完成，直接访问签到首页...")
-                    self.driver.get("https://checkin.leaflow.net/")
+                    
+                    # 调整页面加载策略，减少页面加载时间
+                    self.driver.execute_cdp_cmd('Page.setLoadStrategy', {'strategy': 'eager'})  # 只加载DOM，不等待资源
+                    
+                    # 尝试访问签到首页，捕获超时异常
+                    try:
+                        self.driver.set_page_load_timeout(15)  # 设置合理的超时时间
+                        self.driver.get("https://checkin.leaflow.net/index.php")
+                        logger.info(f"成功访问签到首页，URL: {self.driver.current_url}")
+                    except Exception as e:
+                        logger.error(f"访问签到首页时出错: {e}")
+                        # 无论是否超时，都获取当前页面信息
+                        try:
+                            logger.info(f"当前页面URL: {self.driver.current_url}")
+                            logger.info(f"当前页面标题: {self.driver.title}")
+                            # 获取页面源码（最多前2000字符）
+                            page_source = self.driver.page_source[:2000]
+                            logger.info(f"页面源码片段: {page_source}")
+                        except Exception as info_e:
+                            logger.error(f"获取页面信息失败: {info_e}")
+                    finally:
+                        # 恢复默认页面加载策略
+                        self.driver.execute_cdp_cmd('Page.setLoadStrategy', {'strategy': 'normal'})
+                        self.driver.set_page_load_timeout(60)
                 
+                # 获取当前页面信息，便于调试
                 logger.info(f"当前签到页面URL: {self.driver.current_url}")
                 logger.info(f"当前页面标题: {self.driver.title}")
                 
-                # 等待页面重定向完成
-                logger.info("等待页面重定向完成...")
-                time.sleep(5)
-                logger.info(f"重定向后URL: {self.driver.current_url}")
-                logger.info(f"重定向后标题: {self.driver.title}")
+                # 获取页面源码（最多前2000字符），便于调试
+                try:
+                    page_source = self.driver.page_source[:2000]
+                    logger.info(f"页面源码片段: {page_source}")
+                except Exception as e:
+                    logger.error(f"获取页面源码失败: {e}")
+                
+                # 简化重定向处理，直接检查当前URL
+                logger.info("检查当前页面状态...")
                 
                 # 检查是否需要进行OAuth授权
                 if "oauth/authorize" in self.driver.current_url:
