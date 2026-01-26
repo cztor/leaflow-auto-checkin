@@ -492,6 +492,7 @@ class LeaflowAutoCheckin:
         max_retries = 3
         retry_delay = 5  # 秒
         
+        # 尝试访问签到页面，处理网络超时
         for attempt in range(1, max_retries + 1):
             try:
                 # 设置页面加载超时
@@ -530,7 +531,55 @@ class LeaflowAutoCheckin:
                 
                 logger.info(f"当前签到页面URL: {self.driver.current_url}")
                 logger.info(f"当前页面标题: {self.driver.title}")
-                break  # 成功访问，跳出重试循环
+                
+                # 等待页面重定向完成
+                logger.info("等待页面重定向完成...")
+                time.sleep(5)
+                logger.info(f"重定向后URL: {self.driver.current_url}")
+                logger.info(f"重定向后标题: {self.driver.title}")
+                
+                # 检查是否需要进行OAuth授权
+                if "oauth/authorize" in self.driver.current_url:
+                    logger.info("检测到OAuth授权页面，尝试自动授权...")
+                    # 查找并点击授权按钮
+                    try:
+                        # 尝试多种选择器找到授权按钮
+                        authorize_selectors = [
+                            "button[type='submit']",
+                            "input[type='submit']",
+                            "//button[contains(text(), '授权')]",
+                            "//button[contains(text(), 'Authorize')]"
+                        ]
+                        
+                        authorize_btn = None
+                        for selector in authorize_selectors:
+                            try:
+                                if selector.startswith("//"):
+                                    authorize_btn = WebDriverWait(self.driver, 10).until(
+                                        EC.element_to_be_clickable((By.XPATH, selector))
+                                    )
+                                else:
+                                    authorize_btn = WebDriverWait(self.driver, 10).until(
+                                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                                    )
+                                logger.info(f"找到授权按钮")
+                                break
+                            except:
+                                continue
+                        
+                        if authorize_btn:
+                            authorize_btn.click()
+                            logger.info("已点击授权按钮")
+                            time.sleep(5)
+                            logger.info(f"授权后URL: {self.driver.current_url}")
+                        else:
+                            logger.warning("未找到授权按钮，尝试等待自动跳转...")
+                            time.sleep(10)
+                            logger.info(f"等待后URL: {self.driver.current_url}")
+                    except Exception as e:
+                        logger.warning(f"自动授权失败，可能需要手动授权: {e}")
+                
+                break  # 成功访问并处理完重定向，跳出重试循环
                 
             except Exception as e:
                 if "ERR_CONNECTION_TIMED_OUT" in str(e) or "timeout" in str(e).lower():
@@ -548,56 +597,6 @@ class LeaflowAutoCheckin:
             finally:
                 # 恢复默认页面加载超时
                 self.driver.set_page_load_timeout(60)
-            
-            # 等待页面重定向完成
-            logger.info("等待页面重定向完成...")
-            time.sleep(5)
-            logger.info(f"重定向后URL: {self.driver.current_url}")
-            logger.info(f"重定向后标题: {self.driver.title}")
-            
-            # 检查是否需要进行OAuth授权
-            if "oauth/authorize" in self.driver.current_url:
-                logger.info("检测到OAuth授权页面，尝试自动授权...")
-                # 查找并点击授权按钮
-                try:
-                    # 尝试多种选择器找到授权按钮
-                    authorize_selectors = [
-                        "button[type='submit']",
-                        "input[type='submit']",
-                        "//button[contains(text(), '授权')]",
-                        "//button[contains(text(), 'Authorize')]"
-                    ]
-                    
-                    authorize_btn = None
-                    for selector in authorize_selectors:
-                        try:
-                            if selector.startswith("//"):
-                                authorize_btn = WebDriverWait(self.driver, 10).until(
-                                    EC.element_to_be_clickable((By.XPATH, selector))
-                                )
-                            else:
-                                authorize_btn = WebDriverWait(self.driver, 10).until(
-                                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                                )
-                            logger.info(f"找到授权按钮")
-                            break
-                        except:
-                            continue
-                    
-                    if authorize_btn:
-                        authorize_btn.click()
-                        logger.info("已点击授权按钮")
-                        time.sleep(5)
-                        logger.info(f"授权后URL: {self.driver.current_url}")
-                    else:
-                        logger.warning("未找到授权按钮，尝试等待自动跳转...")
-                        time.sleep(10)
-                        logger.info(f"等待后URL: {self.driver.current_url}")
-                except Exception as e:
-                    logger.warning(f"自动授权失败，可能需要手动授权: {e}")
-        except Exception as e:
-            logger.error(f"跳转签到页面失败: {e}")
-            raise
         
         # 等待签到页面加载（最多重试5次，每次等待20秒）
         retry_count = 0
