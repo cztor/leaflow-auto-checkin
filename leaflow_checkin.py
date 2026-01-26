@@ -964,71 +964,72 @@ class MultiAccountManager:
         # 发送第一次汇总通知
         self.send_notification(results)
         
+        # 暂时关闭30分钟后重试功能
         # 检查是否有失败的账号需要重试
-        failed_accounts = [account for account, (email, success, _, _) in zip(self.accounts, results) if not success]
-        if failed_accounts:
-            logger.info(f"发现 {len(failed_accounts)} 个账号签到失败，将在30分钟后重试...")
-            
-            # 等待30分钟
-            retry_wait_time = 30 * 60
-            logger.info(f"等待{retry_wait_time}秒后重试失败的账号...")
-            time.sleep(retry_wait_time)
-            
-            # 重试失败的账号
-            retry_results = []
-            for i, account in enumerate(failed_accounts, 1):
-                logger.info(f"重试第 {i}/{len(failed_accounts)} 个失败账号")
-                
-                try:
-                    auto_checkin = LeaflowAutoCheckin(account['email'], account['password'])
-                    success, result, balance = auto_checkin.run()
-                    retry_results.append((account['email'], success, result, balance))
-                    
-                    # 在账号之间添加间隔
-                    if i < len(failed_accounts):
-                        wait_time = 5
-                        logger.info(f"等待{wait_time}秒后处理下一个重试账号...")
-                        time.sleep(wait_time)
-                        
-                except Exception as e:
-                    error_msg = f"重试账号时发生异常: {str(e)}"
-                    logger.error(error_msg)
-                    retry_results.append((account['email'], False, error_msg, "未知"))
-            
-            # 发送重试结果通知
-            if retry_results:
-                # 构建重试通知消息
-                retry_success_count = sum(1 for _, success, _, _ in retry_results if success)
-                retry_total_count = len(retry_results)
-                current_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-                
-                retry_message = f"🔄 Leaflow自动签到重试通知\n"
-                retry_message += f"📊 重试成功: {retry_success_count}/{retry_total_count}\n"
-                retry_message += f"📅 重试时间：{current_date}\n\n"
-                
-                for email, success, result, balance in retry_results:
-                    masked_email = email[:3] + "***" + email[email.find("@"):]
-                    
-                    if success:
-                        status = "✅"
-                        retry_message += f"账号：{masked_email}\n"
-                        retry_message += f"{status}  重试成功！{result}\n"
-                        retry_message += f"💰  当前总余额：{balance}。\n\n"
-                    else:
-                        status = "❌"
-                        retry_message += f"账号：{masked_email}\n"
-                        retry_message += f"{status}  重试失败：{result}\n\n"
-                
-                # 发送重试通知
-                logger.info("发送重试结果通知...")
-                self.send_api_notification(retry_message)
-                
-                # 更新原始结果
-                for email, success, result, balance in retry_results:
-                    for i, (orig_email, orig_success, orig_result, orig_balance) in enumerate(results):
-                        if orig_email == email:
-                            results[i] = (email, success, result, balance)
-                            break
+        # failed_accounts = [account for account, (email, success, _, _) in zip(self.accounts, results) if not success]
+        # if failed_accounts:
+        #     logger.info(f"发现 {len(failed_accounts)} 个账号签到失败，将在30分钟后重试...")
+        #     
+        #     # 等待30分钟
+        #     retry_wait_time = 30 * 60
+        #     logger.info(f"等待{retry_wait_time}秒后重试失败的账号...")
+        #     time.sleep(retry_wait_time)
+        #     
+        #     # 重试失败的账号
+        #     retry_results = []
+        #     for i, account in enumerate(failed_accounts, 1):
+        #         logger.info(f"重试第 {i}/{len(failed_accounts)} 个失败账号")
+        #         
+        #         try:
+        #             auto_checkin = LeaflowAutoCheckin(account['email'], account['password'])
+        #             success, result, balance = auto_checkin.run()
+        #             retry_results.append((account['email'], success, result, balance))
+        #             
+        #             # 在账号之间添加间隔
+        #             if i < len(failed_accounts):
+        #                 wait_time = 5
+        #                 logger.info(f"等待{wait_time}秒后处理下一个重试账号...")
+        #                 time.sleep(wait_time)
+        #                 
+        #         except Exception as e:
+        #             error_msg = f"重试账号时发生异常: {str(e)}"
+        #             logger.error(error_msg)
+        #             retry_results.append((account['email'], False, error_msg, "未知"))
+        #     
+        #     # 发送重试结果通知
+        #     if retry_results:
+        #         # 构建重试通知消息
+        #         retry_success_count = sum(1 for _, success, _, _ in retry_results if success)
+        #         retry_total_count = len(retry_results)
+        #         current_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+        #         
+        #         retry_message = f"🔄 Leaflow自动签到重试通知\n"
+        #         retry_message += f"📊 重试成功: {retry_success_count}/{retry_total_count}\n"
+        #         retry_message += f"📅 重试时间：{current_date}\n\n"
+        #         
+        #         for email, success, result, balance in retry_results:
+        #             masked_email = email[:3] + "***" + email[email.find("@"):]
+        #             
+        #             if success:
+        #                 status = "✅"
+        #                 retry_message += f"账号：{masked_email}\n"
+        #                 retry_message += f"{status}  重试成功！{result}\n"
+        #                 retry_message += f"💰  当前总余额：{balance}。\n\n"
+        #             else:
+        #                 status = "❌"
+        #                 retry_message += f"账号：{masked_email}\n"
+        #                 retry_message += f"{status}  重试失败：{result}\n\n"
+        #         
+        #         # 发送重试通知
+        #         logger.info("发送重试结果通知...")
+        #         self.send_api_notification(retry_message)
+        #         
+        #         # 更新原始结果
+        #         for email, success, result, balance in retry_results:
+        #             for i, (orig_email, orig_success, orig_result, orig_balance) in enumerate(results):
+        #                 if orig_email == email:
+        #                     results[i] = (email, success, result, balance)
+        #                     break
         
         # 返回总体结果
         success_count = sum(1 for _, success, _, _ in results if success)
