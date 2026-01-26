@@ -638,7 +638,8 @@ class LeaflowAutoCheckin:
                     except Exception as e:
                         logger.warning(f"自动授权失败，可能需要手动授权: {e}")
                 
-                break  # 成功访问并处理完重定向，跳出重试循环
+                # 成功访问并处理完重定向，继续执行后续流程
+                # 注意：这里不再需要continue或break，因为我们已经在前面的代码中处理了循环退出逻辑
                 
             except Exception as e:
                 if "ERR_CONNECTION_TIMED_OUT" in str(e) or "timeout" in str(e).lower():
