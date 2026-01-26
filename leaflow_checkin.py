@@ -536,7 +536,7 @@ class LeaflowAutoCheckin:
                     try:
                         # 使用较短的超时时间，避免长时间等待
                         self.driver.set_page_load_timeout(15)  # 设置合理的超时时间
-                        self.driver.get("https://checkin.leaflow.net/index.php")
+                        self.driver.get("https://checkin.leaflow.net/")
                         logger.info(f"成功访问签到首页，URL: {self.driver.current_url}")
                     except Exception as e:
                         logger.error(f"访问签到首页时出错: {e}")
@@ -1053,3 +1053,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
