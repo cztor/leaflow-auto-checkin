@@ -202,6 +202,14 @@ class LeaflowAutoCheckin:
             current_url = self.driver.current_url
             if "dashboard" in current_url or "workspaces" in current_url or "login" not in current_url:
                 logger.info(f"登录成功，当前URL: {current_url}")
+                
+                # 获取并保存登录后的COOKIE
+                logger.info("获取登录后的COOKIE...")
+                self.login_cookies = self.driver.get_cookies()
+                logger.info(f"获取到 {len(self.login_cookies)} 个COOKIE")
+                for cookie in self.login_cookies:
+                    logger.debug(f"COOKIE: {cookie['name']} -> {cookie['domain']}")
+                    
                 return True
             else:
                 raise Exception("登录后未跳转到正确页面")
@@ -480,8 +488,35 @@ class LeaflowAutoCheckin:
         # 跳转到签到页面
         logger.info("跳转到签到页面...")
         try:
-            # 直接跳转到签到页面（已在run方法中完成登录）
+            # 先访问checkin域名主页，设置好域名上下文
             self.driver.get("https://checkin.leaflow.net")
+            
+            # 添加登录时保存的COOKIE到当前域名
+            logger.info("添加登录COOKIE到checkin域名...")
+            if hasattr(self, 'login_cookies') and self.login_cookies:
+                # 先清除当前页面的COOKIE
+                self.driver.delete_all_cookies()
+                
+                # 添加登录时保存的所有COOKIE
+                for cookie in self.login_cookies:
+                    try:
+                        # 适配不同域名的COOKIE
+                        if 'domain' in cookie and cookie['domain']:
+                            # 如果COOKIE有域名，直接添加
+                            self.driver.add_cookie(cookie)
+                        else:
+                            # 否则，修改为当前域名
+                            cookie_copy = cookie.copy()
+                            cookie_copy['domain'] = '.leaflow.net'  # 设置为主域名，让子域名也能使用
+                            self.driver.add_cookie(cookie_copy)
+                        logger.debug(f"添加COOKIE成功: {cookie['name']}")
+                    except Exception as e:
+                        logger.debug(f"添加COOKIE失败: {cookie['name']} -> {e}")
+                
+                # 重新加载页面，使COOKIE生效
+                logger.info("重新加载页面使COOKIE生效...")
+                self.driver.refresh()
+            
             logger.info(f"当前签到页面URL: {self.driver.current_url}")
             logger.info(f"当前页面标题: {self.driver.title}")
             
