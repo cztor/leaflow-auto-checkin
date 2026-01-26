@@ -9,6 +9,7 @@ import os
 import time
 import logging
 import traceback
+from selenium.common.exceptions import TimeoutException
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -279,7 +280,6 @@ class LeaflowAutoCheckin:
     
     def wait_for_checkin_page_loaded(self, max_retries=3, wait_time=20):
         """等待签到页面完全加载，支持重试"""
-        from selenium.common.exceptions import TimeoutException
 
         for attempt in range(max_retries):
             logger.info(f"等待签到页面加载，尝试 {attempt + 1}/{max_retries}")
