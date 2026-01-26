@@ -507,6 +507,8 @@ class LeaflowAutoCheckin:
         target_url = "https://checkin.leaflow.net/index.php"
         
         # 尝试访问签到页面，处理网络超时
+        max_retries = 3
+        retry_delay = 5
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info(f"尝试第 {attempt}/{max_retries} 次访问签到页面...")
@@ -641,19 +643,6 @@ class LeaflowAutoCheckin:
                 # 成功访问并处理完重定向，继续执行后续流程
                 # 注意：这里不再需要continue或break，因为我们已经在前面的代码中处理了循环退出逻辑
                 
-            except Exception as e:
-                if "ERR_CONNECTION_TIMED_OUT" in str(e) or "timeout" in str(e).lower():
-                    logger.error(f"第 {attempt} 次访问签到页面超时: {e}")
-                    if attempt < max_retries:
-                        logger.info(f"等待 {retry_delay} 秒后重试...")
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # 指数退避
-                    else:
-                        logger.error(f"经过 {max_retries} 次重试后仍无法访问签到页面")
-                        raise
-                else:
-                    logger.error(f"访问签到页面时发生其他错误: {e}")
-                    raise
             finally:
                 # 恢复默认页面加载超时
                 self.driver.set_page_load_timeout(60)
