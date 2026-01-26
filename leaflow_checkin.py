@@ -396,44 +396,63 @@ class LeaflowAutoCheckin:
                         # 尝试多种点击方式
                         clicked = False
                         
-                        # 方式1: 直接点击
-                        if checkin_btn.is_enabled():
-                            try:
-                                logger.info("方式1: 尝试直接点击按钮...")
-                                checkin_btn.click()
-                                clicked = True
-                                logger.info("方式1: 直接点击成功")
-                            except Exception as e:
-                                logger.warning(f"方式1: 直接点击失败: {e}")
-                                clicked = False
-                        else:
-                            logger.warning("按钮当前不可用，不应该到达这里，因为已在前面的检查中返回")
+                        # 方式1: JavaScript点击（优先使用，避免页面阻塞）
+                        try:
+                            logger.info("方式1: 尝试JavaScript点击...")
+                            self.driver.execute_script("arguments[0].click();", checkin_btn)
+                            clicked = True
+                            logger.info("方式1: JavaScript点击成功")
+                        except Exception as e:
+                            logger.warning(f"方式1: JavaScript点击失败: {e}")
+                            clicked = False
                         
-                        # 方式2: JavaScript点击
+                        # 方式2: ActionChains点击
                         if not clicked:
                             try:
-                                logger.info("方式2: 尝试JavaScript点击...")
-                                self.driver.execute_script("arguments[0].click();", checkin_btn)
-                                clicked = True
-                                logger.info("方式2: JavaScript点击成功")
-                            except Exception as e:
-                                logger.warning(f"方式2: JavaScript点击失败: {e}")
-                                clicked = False
-                        
-                        # 方式3: ActionChains点击
-                        if not clicked:
-                            try:
-                                logger.info("方式3: 尝试ActionChains点击...")
+                                logger.info("方式2: 尝试ActionChains点击...")
+                                # 设置隐式等待时间，避免点击超时
+                                self.driver.implicitly_wait(5)
                                 actions = ActionChains(self.driver)
                                 actions.move_to_element(checkin_btn).click().perform()
                                 clicked = True
-                                logger.info("方式3: ActionChains点击成功")
+                                logger.info("方式2: ActionChains点击成功")
                             except Exception as e:
-                                logger.warning(f"方式3: ActionChains点击失败: {e}")
+                                logger.warning(f"方式2: ActionChains点击失败: {e}")
+                                clicked = False
+                            finally:
+                                # 恢复隐式等待时间
+                                self.driver.implicitly_wait(0)
+                        
+                        # 方式3: 直接点击（最后尝试，可能会阻塞）
+                        if not clicked:
+                            try:
+                                logger.info("方式3: 尝试直接点击按钮...")
+                                # 使用WebDriverWait设置点击超时
+                                WebDriverWait(self.driver, 10).until(
+                                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button.checkin-btn"))
+                                ).click()
+                                clicked = True
+                                logger.info("方式3: 直接点击成功")
+                            except Exception as e:
+                                logger.warning(f"方式3: 直接点击失败: {e}")
                                 clicked = False
                         
                         if clicked:
                             logger.info(f"成功点击签到按钮，耗时: {time.time() - start_time:.2f}秒")
+                            # 点击后立即检查页面变化，确认签到是否成功
+                            time.sleep(2)
+                            # 检查按钮状态或页面文本变化
+                            try:
+                                updated_btn = self.driver.find_element(By.CSS_SELECTOR, "button.checkin-btn")
+                                updated_text = updated_btn.text.strip()
+                                page_text = self.driver.page_source
+                                if (not updated_btn.is_enabled() or 
+                                    "已完成" in updated_text or 
+                                    "今日已签到" in page_text or
+                                    "已签到" in updated_text):
+                                    logger.info("签到成功，按钮状态已更新")
+                            except:
+                                pass
                             return True
                         else:
                             logger.error("所有点击方式均失败")
