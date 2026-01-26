@@ -506,6 +506,9 @@ class LeaflowAutoCheckin:
                 # 添加登录时保存的COOKIE到当前域名
                 logger.info("添加登录COOKIE到checkin域名...")
                 if hasattr(self, 'login_cookies') and self.login_cookies:
+                    # 先访问checkin域名的一个简单页面，确保域名上下文正确
+                    self.driver.get("https://checkin.leaflow.net/")
+                    
                     # 先清除当前页面的COOKIE
                     self.driver.delete_all_cookies()
                     
@@ -513,21 +516,22 @@ class LeaflowAutoCheckin:
                     for cookie in self.login_cookies:
                         try:
                             # 适配不同域名的COOKIE
-                            if 'domain' in cookie and cookie['domain']:
-                                # 如果COOKIE有域名，直接添加
-                                self.driver.add_cookie(cookie)
-                            else:
-                                # 否则，修改为当前域名
-                                cookie_copy = cookie.copy()
-                                cookie_copy['domain'] = '.leaflow.net'  # 设置为主域名，让子域名也能使用
-                                self.driver.add_cookie(cookie_copy)
-                            logger.debug(f"添加COOKIE成功: {cookie['name']}")
+                            cookie_copy = cookie.copy()
+                            # 确保COOKIE能被所有子域名使用
+                            if 'domain' not in cookie_copy or not cookie_copy['domain']:
+                                cookie_copy['domain'] = '.leaflow.net'
+                            # 移除可能导致问题的属性
+                            if 'expiry' in cookie_copy and isinstance(cookie_copy['expiry'], float):
+                                cookie_copy['expiry'] = int(cookie_copy['expiry'])
+                            # 添加COOKIE
+                            self.driver.add_cookie(cookie_copy)
+                            logger.debug(f"添加COOKIE成功: {cookie['name']} -> {cookie_copy.get('domain', '无域名')}")
                         except Exception as e:
                             logger.debug(f"添加COOKIE失败: {cookie['name']} -> {e}")
                     
-                    # 重新加载页面，使COOKIE生效
-                    logger.info("重新加载页面使COOKIE生效...")
-                    self.driver.refresh()
+                    # 不使用refresh()，而是直接访问签到首页，避免页面阻塞
+                    logger.info("COOKIE添加完成，直接访问签到首页...")
+                    self.driver.get("https://checkin.leaflow.net/")
                 
                 logger.info(f"当前签到页面URL: {self.driver.current_url}")
                 logger.info(f"当前页面标题: {self.driver.title}")
