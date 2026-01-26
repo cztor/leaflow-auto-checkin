@@ -503,85 +503,92 @@ class LeaflowAutoCheckin:
         # 跳转到签到页面
         logger.info("跳转到签到页面...")
         
-        # 网络请求重试设置
-        max_retries = 3
-        retry_delay = 5  # 秒
-        
-        # 尝试不同的签到页面URL，增加成功概率
-        checkin_urls = [
-            "https://checkin.leaflow.net/index.php",  # 直接访问index.php
-            "https://checkin.leaflow.net/"  # 根路径
-        ]
+        # 只使用明确的签到页面URL，避免跳转到登录页面
+        target_url = "https://checkin.leaflow.net/index.php"
         
         # 尝试访问签到页面，处理网络超时
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info(f"尝试第 {attempt}/{max_retries} 次访问签到页面...")
                 
-                # 使用循环尝试不同的URL
-                for url in checkin_urls:
-                    try:
-                        # 重置超时设置，避免负超时值
-                        self.driver.set_page_load_timeout(30)
-                        
-                        logger.info(f"尝试访问URL: {url}")
-                        self.driver.get(url)
-                        logger.info(f"成功访问签到页面，URL: {self.driver.current_url}")
-                        break  # 成功访问，跳出URL尝试循环
-                    except Exception as e:
-                        logger.warning(f"访问URL {url}失败: {e}")
-                        # 检查是否是负超时错误
-                        if "-0.005" in str(e) or "Timed out receiving message from renderer" in str(e):
-                            logger.error("检测到负超时错误，重置浏览器会话...")
-                            # 重置浏览器会话
-                            self.driver.quit()
-                            self.setup_driver()
-                        # 继续尝试下一个URL
-                        continue
+                # 重置超时设置，避免负超时值
+                self.driver.set_page_load_timeout(30)
                 
-                # 添加登录时保存的COOKIE到当前域名
-                logger.info("添加登录COOKIE到checkin域名...")
-                if hasattr(self, 'login_cookies') and self.login_cookies:
-                    # 先清除当前页面的COOKIE
-                    self.driver.delete_all_cookies()
-                    
-                    # 添加登录时保存的所有COOKIE
-                    for cookie in self.login_cookies:
-                        try:
-                            # 适配不同域名的COOKIE
-                            cookie_copy = cookie.copy()
-                            # 确保COOKIE能被所有子域名使用
-                            if 'domain' not in cookie_copy or not cookie_copy['domain']:
-                                cookie_copy['domain'] = '.leaflow.net'
-                            # 移除可能导致问题的属性
-                            if 'expiry' in cookie_copy and isinstance(cookie_copy['expiry'], float):
-                                cookie_copy['expiry'] = int(cookie_copy['expiry'])
-                            # 添加COOKIE
-                            self.driver.add_cookie(cookie_copy)
-                            logger.debug(f"添加COOKIE成功: {cookie['name']} -> {cookie_copy.get('domain', '无域名')}")
-                        except Exception as e:
-                            logger.debug(f"添加COOKIE失败: {cookie['name']} -> {e}")
-                    
-                    # 尝试直接访问签到首页，使用明确的URL
-                    logger.info("COOKIE添加完成，直接访问签到首页...")
-                    try:
-                        # 使用明确的URL，避免重定向
-                        target_url = "https://checkin.leaflow.net/index.php"
-                        logger.info(f"访问目标URL: {target_url}")
-                        self.driver.set_page_load_timeout(20)
-                        self.driver.get(target_url)
-                        logger.info(f"成功访问签到首页，URL: {self.driver.current_url}")
-                    except Exception as e:
-                        logger.error(f"访问签到首页时出错: {e}")
-                        # 无论是否超时，都获取当前页面信息
-                        try:
-                            logger.info(f"当前页面URL: {self.driver.current_url}")
-                            logger.info(f"当前页面标题: {self.driver.title}")
-                            # 获取页面源码（最多前2000字符）
-                            page_source = self.driver.page_source[:2000]
-                            logger.info(f"页面源码片段: {page_source}")
-                        except Exception as info_e:
-                            logger.error(f"获取页面信息失败: {info_e}")
+                logger.info(f"尝试访问URL: {target_url}")
+                self.driver.get(target_url)
+                
+                current_url = self.driver.current_url
+                logger.info(f"当前URL: {current_url}")
+                
+                # 检查是否跳转到了登录页面
+                if "login" in current_url and "checkin" not in current_url:
+                    logger.warning(f"访问签到页面时跳转到了登录页面: {current_url}")
+                    logger.info("跳过登录页面，继续执行COOKIE处理...")
+                    # 不中断，继续执行后续的COOKIE处理
+                else:
+                    logger.info(f"成功访问签到页面，URL: {current_url}")
+                
+                break  # 跳出尝试循环，继续执行后续流程
+                
+            except Exception as e:
+                logger.warning(f"访问URL {target_url}失败: {e}")
+                # 检查是否是负超时错误
+                if "-0.005" in str(e) or "-0.004" in str(e) or "Timed out receiving message from renderer" in str(e):
+                    logger.error("检测到负超时错误，重置浏览器会话...")
+                    # 重置浏览器会话
+                    self.driver.quit()
+                    self.setup_driver()
+                
+                # 等待后重试
+                if attempt < max_retries:
+                    logger.info(f"等待 {retry_delay} 秒后重试...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避
+                else:
+                    logger.error(f"经过 {max_retries} 次重试后仍无法访问签到页面")
+                    raise
+        
+        # 添加登录时保存的COOKIE到当前域名
+        logger.info("添加登录COOKIE到checkin域名...")
+        if hasattr(self, 'login_cookies') and self.login_cookies:
+            # 先清除当前页面的COOKIE
+            self.driver.delete_all_cookies()
+            
+            # 添加登录时保存的所有COOKIE
+            for cookie in self.login_cookies:
+                try:
+                    # 适配不同域名的COOKIE
+                    cookie_copy = cookie.copy()
+                    # 确保COOKIE能被所有子域名使用
+                    if 'domain' not in cookie_copy or not cookie_copy['domain']:
+                        cookie_copy['domain'] = '.leaflow.net'
+                    # 移除可能导致问题的属性
+                    if 'expiry' in cookie_copy and isinstance(cookie_copy['expiry'], float):
+                        cookie_copy['expiry'] = int(cookie_copy['expiry'])
+                    # 添加COOKIE
+                    self.driver.add_cookie(cookie_copy)
+                    logger.debug(f"添加COOKIE成功: {cookie['name']} -> {cookie_copy.get('domain', '无域名')}")
+                except Exception as e:
+                    logger.debug(f"添加COOKIE失败: {cookie['name']} -> {e}")
+            
+            # 尝试直接访问签到首页，使用明确的URL
+            logger.info("COOKIE添加完成，直接访问签到首页...")
+            try:
+                # 使用明确的URL，避免重定向
+                self.driver.set_page_load_timeout(20)
+                self.driver.get(target_url)
+                logger.info(f"成功访问签到首页，URL: {self.driver.current_url}")
+            except Exception as e:
+                logger.error(f"访问签到首页时出错: {e}")
+                # 无论是否超时，都获取当前页面信息
+                try:
+                    logger.info(f"当前页面URL: {self.driver.current_url}")
+                    logger.info(f"当前页面标题: {self.driver.title}")
+                    # 获取页面源码（最多前2000字符）
+                    page_source = self.driver.page_source[:2000]
+                    logger.info(f"页面源码片段: {page_source}")
+                except Exception as info_e:
+                    logger.error(f"获取页面信息失败: {info_e}")
                 
                 # 获取当前页面信息，便于调试
                 logger.info(f"当前签到页面URL: {self.driver.current_url}")
