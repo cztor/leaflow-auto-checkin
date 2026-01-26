@@ -461,34 +461,125 @@ class LeaflowAutoCheckin:
         # 跳转到签到页面
         logger.info("跳转到签到页面...")
         try:
-            # 先访问主站，确保COOKIE有效
-            self.driver.get("https://leaflow.net/dashboard")
-            time.sleep(3)
-            
-            # 再跳转到签到页面
+            # 直接跳转到签到页面（已在run方法中完成登录）
             self.driver.get("https://checkin.leaflow.net")
             logger.info(f"当前签到页面URL: {self.driver.current_url}")
             logger.info(f"当前页面标题: {self.driver.title}")
+            
+            # 等待页面重定向完成
+            logger.info("等待页面重定向完成...")
+            time.sleep(5)
+            logger.info(f"重定向后URL: {self.driver.current_url}")
+            logger.info(f"重定向后标题: {self.driver.title}")
+            
+            # 检查是否需要进行OAuth授权
+            if "oauth/authorize" in self.driver.current_url:
+                logger.info("检测到OAuth授权页面，尝试自动授权...")
+                # 查找并点击授权按钮
+                try:
+                    # 尝试多种选择器找到授权按钮
+                    authorize_selectors = [
+                        "button[type='submit']",
+                        "input[type='submit']",
+                        "//button[contains(text(), '授权')]",
+                        "//button[contains(text(), 'Authorize')]"
+                    ]
+                    
+                    authorize_btn = None
+                    for selector in authorize_selectors:
+                        try:
+                            if selector.startswith("//"):
+                                authorize_btn = WebDriverWait(self.driver, 10).until(
+                                    EC.element_to_be_clickable((By.XPATH, selector))
+                                )
+                            else:
+                                authorize_btn = WebDriverWait(self.driver, 10).until(
+                                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                                )
+                            logger.info(f"找到授权按钮")
+                            break
+                        except:
+                            continue
+                    
+                    if authorize_btn:
+                        authorize_btn.click()
+                        logger.info("已点击授权按钮")
+                        time.sleep(5)
+                        logger.info(f"授权后URL: {self.driver.current_url}")
+                    else:
+                        logger.warning("未找到授权按钮，尝试等待自动跳转...")
+                        time.sleep(10)
+                        logger.info(f"等待后URL: {self.driver.current_url}")
+                except Exception as e:
+                    logger.warning(f"自动授权失败，可能需要手动授权: {e}")
         except Exception as e:
             logger.error(f"跳转签到页面失败: {e}")
             raise
         
-        # 等待签到页面加载（最多重试3次，每次等待20秒）
-        if not self.wait_for_checkin_page_loaded(max_retries=3, wait_time=20):
+        # 等待签到页面加载（最多重试5次，每次等待20秒）
+        retry_count = 0
+        max_retries = 5
+        success = False
+        
+        while retry_count < max_retries and not success:
+            retry_count += 1
+            logger.info(f"等待签到页面加载，尝试 {retry_count}/{max_retries}")
+            
+            # 检查当前URL和标题，记录详细信息
+            current_url = self.driver.current_url
+            current_title = self.driver.title
+            logger.info(f"  当前URL: {current_url}")
+            logger.info(f"  当前标题: {current_title}")
+            
             # 检查是否是502错误
-            if "502 Bad Gateway" in self.driver.title:
-                logger.error("遇到502 Bad Gateway错误，可能是服务器问题或COOKIE失效")
+            if "502" in current_title or "Bad Gateway" in current_title:
+                logger.error(f"第 {retry_count} 次尝试遇到502 Bad Gateway错误")
+                
+                # 尝试重新访问主站获取有效COOKIE（仅在需要时）
+                logger.info("尝试重新访问主站获取有效COOKIE...")
+                self.driver.get("https://leaflow.net/dashboard")
+                time.sleep(3)
+                
+                # 重新跳转到签到页面
+                self.driver.get("https://checkin.leaflow.net")
+                time.sleep(5)
+                continue
+            
+            # 检查是否是重定向到登录页面
+            if "login" in current_url and "checkin" not in current_url:
+                logger.error(f"第 {retry_count} 次尝试遇到登录页面，COOKIE可能失效")
+                
+                # 重新执行登录流程
+                logger.info("尝试重新登录...")
+                if self.login():
+                    # 重新跳转到签到页面
+                    self.driver.get("https://checkin.leaflow.net")
+                    time.sleep(5)
+                else:
+                    raise Exception("重新登录失败")
+                continue
+            
+            # 检查是否是OAuth回调页面
+            if "auth_callback.php" in current_url:
+                logger.info(f"第 {retry_count} 次尝试遇到OAuth回调页面，等待自动跳转...")
+                time.sleep(5)
+                logger.info(f"  自动跳转后URL: {self.driver.current_url}")
+                logger.info(f"  自动跳转后标题: {self.driver.title}")
+            
+            # 尝试等待页面加载
+            if self.wait_for_checkin_page_loaded(max_retries=1, wait_time=15):
+                success = True
+                logger.info(f"第 {retry_count} 次尝试成功加载签到页面")
+            else:
+                logger.warning(f"第 {retry_count} 次尝试未成功加载签到页面")
+                
                 # 尝试刷新页面
                 logger.info("尝试刷新页面...")
                 self.driver.refresh()
                 time.sleep(5)
-                # 再次等待页面加载
-                if self.wait_for_checkin_page_loaded(max_retries=2, wait_time=15):
-                    logger.info("刷新后页面加载成功")
-                else:
-                    raise Exception("签到页面加载失败，遇到502 Bad Gateway错误")
-            else:
-                raise Exception("签到页面加载失败，无法找到签到相关元素")
+        
+        if not success:
+            raise Exception(f"签到页面加载失败，经过 {max_retries} 次重试后仍无法访问")
         
         # 查找并点击立即签到按钮
         checkin_result = self.find_and_click_checkin_button()
