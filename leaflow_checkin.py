@@ -38,21 +38,36 @@ class LeaflowAutoCheckin:
         """设置Chrome驱动选项"""
         chrome_options = Options()
         
-        # GitHub Actions环境配置
-        if os.getenv('GITHUB_ACTIONS'):
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--window-size=1920,1080')
-        
-        # 通用配置
+        # 基础稳定配置（适用于所有环境）
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         
+        # 增强稳定性的通用选项
+        chrome_options.add_argument('--disable-gpu')  # 禁用GPU加速，减少渲染问题
+        chrome_options.add_argument('--disable-dev-shm-usage')  # 禁用/dev/shm使用，避免内存问题
+        chrome_options.add_argument('--no-sandbox')  # 禁用沙箱，提高兼容性
+        chrome_options.add_argument('--disable-extensions')  # 禁用扩展，减少干扰
+        chrome_options.add_argument('--disable-plugins')  # 禁用插件，减少资源占用
+        chrome_options.add_argument('--disable-images')  # 禁用图片加载，提高页面加载速度
+        chrome_options.add_argument('--disable-javascript')  # 禁用JavaScript（如果页面功能允许）
+        chrome_options.add_argument('--window-size=1920,1080')  # 设置窗口大小
+        chrome_options.add_argument('--ignore-certificate-errors')  # 忽略证书错误
+        chrome_options.add_argument('--ignore-ssl-errors')  # 忽略SSL错误
+        chrome_options.add_argument('--allow-insecure-localhost')  # 允许不安全的localhost连接
+        chrome_options.add_argument('--log-level=3')  # 减少Chrome日志输出
+        
+        # GitHub Actions环境配置
+        if os.getenv('GITHUB_ACTIONS'):
+            chrome_options.add_argument('--headless')  # 无头模式
+        
         self.driver = webdriver.Chrome(options=chrome_options)
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        # 设置默认超时时间
+        self.driver.set_page_load_timeout(30)  # 页面加载超时
+        self.driver.set_script_timeout(30)  # 脚本执行超时
+        self.driver.implicitly_wait(5)  # 隐式等待时间
         
     def close_popup(self):
         """关闭初始弹窗"""
@@ -492,23 +507,41 @@ class LeaflowAutoCheckin:
         max_retries = 3
         retry_delay = 5  # 秒
         
+        # 尝试不同的签到页面URL，增加成功概率
+        checkin_urls = [
+            "https://checkin.leaflow.net/index.php",  # 直接访问index.php
+            "https://checkin.leaflow.net/"  # 根路径
+        ]
+        
         # 尝试访问签到页面，处理网络超时
         for attempt in range(1, max_retries + 1):
             try:
-                # 设置页面加载超时
-                self.driver.set_page_load_timeout(30)
-                
                 logger.info(f"尝试第 {attempt}/{max_retries} 次访问签到页面...")
-                # 先访问checkin域名主页，设置好域名上下文
-                self.driver.get("https://checkin.leaflow.net")
-                logger.info(f"成功访问签到页面，URL: {self.driver.current_url}")
+                
+                # 使用循环尝试不同的URL
+                for url in checkin_urls:
+                    try:
+                        # 重置超时设置，避免负超时值
+                        self.driver.set_page_load_timeout(30)
+                        
+                        logger.info(f"尝试访问URL: {url}")
+                        self.driver.get(url)
+                        logger.info(f"成功访问签到页面，URL: {self.driver.current_url}")
+                        break  # 成功访问，跳出URL尝试循环
+                    except Exception as e:
+                        logger.warning(f"访问URL {url}失败: {e}")
+                        # 检查是否是负超时错误
+                        if "-0.005" in str(e) or "Timed out receiving message from renderer" in str(e):
+                            logger.error("检测到负超时错误，重置浏览器会话...")
+                            # 重置浏览器会话
+                            self.driver.quit()
+                            self.setup_driver()
+                        # 继续尝试下一个URL
+                        continue
                 
                 # 添加登录时保存的COOKIE到当前域名
                 logger.info("添加登录COOKIE到checkin域名...")
                 if hasattr(self, 'login_cookies') and self.login_cookies:
-                    # 先访问checkin域名的一个简单页面，确保域名上下文正确
-                    self.driver.get("https://checkin.leaflow.net/")
-                    
                     # 先清除当前页面的COOKIE
                     self.driver.delete_all_cookies()
                     
@@ -529,14 +562,14 @@ class LeaflowAutoCheckin:
                         except Exception as e:
                             logger.debug(f"添加COOKIE失败: {cookie['name']} -> {e}")
                     
-                    # 不使用refresh()，而是直接访问签到首页，避免页面阻塞
+                    # 尝试直接访问签到首页，使用明确的URL
                     logger.info("COOKIE添加完成，直接访问签到首页...")
-                    
-                    # 尝试访问签到首页，捕获超时异常
                     try:
-                        # 使用较短的超时时间，避免长时间等待
-                        self.driver.set_page_load_timeout(15)  # 设置合理的超时时间
-                        self.driver.get("https://checkin.leaflow.net/")
+                        # 使用明确的URL，避免重定向
+                        target_url = "https://checkin.leaflow.net/index.php"
+                        logger.info(f"访问目标URL: {target_url}")
+                        self.driver.set_page_load_timeout(20)
+                        self.driver.get(target_url)
                         logger.info(f"成功访问签到首页，URL: {self.driver.current_url}")
                     except Exception as e:
                         logger.error(f"访问签到首页时出错: {e}")
@@ -549,9 +582,6 @@ class LeaflowAutoCheckin:
                             logger.info(f"页面源码片段: {page_source}")
                         except Exception as info_e:
                             logger.error(f"获取页面信息失败: {info_e}")
-                    finally:
-                        # 恢复默认超时时间
-                        self.driver.set_page_load_timeout(60)
                 
                 # 获取当前页面信息，便于调试
                 logger.info(f"当前签到页面URL: {self.driver.current_url}")
