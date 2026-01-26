@@ -532,11 +532,9 @@ class LeaflowAutoCheckin:
                     # 不使用refresh()，而是直接访问签到首页，避免页面阻塞
                     logger.info("COOKIE添加完成，直接访问签到首页...")
                     
-                    # 调整页面加载策略，减少页面加载时间
-                    self.driver.execute_cdp_cmd('Page.setLoadStrategy', {'strategy': 'eager'})  # 只加载DOM，不等待资源
-                    
                     # 尝试访问签到首页，捕获超时异常
                     try:
+                        # 使用较短的超时时间，避免长时间等待
                         self.driver.set_page_load_timeout(15)  # 设置合理的超时时间
                         self.driver.get("https://checkin.leaflow.net/index.php")
                         logger.info(f"成功访问签到首页，URL: {self.driver.current_url}")
@@ -552,8 +550,7 @@ class LeaflowAutoCheckin:
                         except Exception as info_e:
                             logger.error(f"获取页面信息失败: {info_e}")
                     finally:
-                        # 恢复默认页面加载策略
-                        self.driver.execute_cdp_cmd('Page.setLoadStrategy', {'strategy': 'normal'})
+                        # 恢复默认超时时间
                         self.driver.set_page_load_timeout(60)
                 
                 # 获取当前页面信息，便于调试
