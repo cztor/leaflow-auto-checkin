@@ -1,4 +1,4 @@
-name: Leaflow_Auto_Checkin
+name: Leaflow_Auto-Checkin
 
 on:
   schedule:
