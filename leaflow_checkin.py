@@ -50,7 +50,7 @@ class LeaflowAutoCheckin:
         chrome_options.add_argument('--disable-extensions')  # 禁用扩展，减少干扰
         chrome_options.add_argument('--disable-plugins')  # 禁用插件，减少资源占用
         chrome_options.add_argument('--disable-images')  # 禁用图片加载，提高页面加载速度
-        chrome_options.add_argument('--disable-javascript')  # 禁用JavaScript（如果页面功能允许）
+        # chrome_options.add_argument('--disable-javascript')  # 启用JavaScript，签到页面功能依赖它
         chrome_options.add_argument('--window-size=1920,1080')  # 设置窗口大小
         chrome_options.add_argument('--ignore-certificate-errors')  # 忽略证书错误
         chrome_options.add_argument('--ignore-ssl-errors')  # 忽略SSL错误
@@ -60,14 +60,24 @@ class LeaflowAutoCheckin:
         # GitHub Actions环境配置
         if os.getenv('GITHUB_ACTIONS'):
             chrome_options.add_argument('--headless')  # 无头模式
+            chrome_options.add_argument('--disable-features=VizDisplayCompositor')  # 增强无头模式稳定性
         
-        self.driver = webdriver.Chrome(options=chrome_options)
+        # 使用 webdriver-manager 自动获取匹配的 ChromeDriver
+        try:
+            from webdriver_manager.chrome import ChromeDriverManager
+            from selenium.webdriver.chrome.service import Service
+            service = Service(ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        except Exception as e:
+            logger.warning(f"webdriver-manager 获取 ChromeDriver 失败，使用默认配置: {e}")
+            self.driver = webdriver.Chrome(options=chrome_options)
+        
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
         # 设置默认超时时间
-        self.driver.set_page_load_timeout(30)  # 页面加载超时
-        self.driver.set_script_timeout(30)  # 脚本执行超时
-        self.driver.implicitly_wait(5)  # 隐式等待时间
+        self.driver.set_page_load_timeout(60)  # 页面加载超时
+        self.driver.set_script_timeout(60)  # 脚本执行超时
+        # self.driver.implicitly_wait(5)  # 移除隐式等待，仅使用显式等待
         
     def close_popup(self):
         """关闭初始弹窗"""
@@ -293,7 +303,7 @@ class LeaflowAutoCheckin:
             logger.warning(f"获取余额时出错: {e}")
             return "未知"
     
-    def wait_for_checkin_page_loaded(self, max_retries=3, wait_time=20):
+    def wait_for_checkin_page_loaded(self, max_retries=5, wait_time=30):
         """等待签到页面完全加载，支持重试"""
 
         for attempt in range(max_retries):
@@ -321,11 +331,11 @@ class LeaflowAutoCheckin:
                 
                 for locator_type, selector in checkin_indicators:
                     try:
-                        # 使用短时等待提高效率
-                        element = WebDriverWait(self.driver, 10).until(
+                        # 增加元素等待时间
+                        element = WebDriverWait(self.driver, 15).until(
                             EC.visibility_of_element_located((locator_type, selector))
-                    )
-                    
+                        )
+                        
                         # 只要找到可见的签到相关元素，不管是否可用，都认为页面已加载成功
                         # 已签到状态下的按钮可能是禁用的，所以不能用is_enabled()判断
                         logger.info(f"检测到签到元素: {selector}")
@@ -507,14 +517,15 @@ class LeaflowAutoCheckin:
         target_url = "https://checkin.leaflow.net/index.php"
         
         # 尝试访问签到页面，处理网络超时
-        max_retries = 3
-        retry_delay = 5
+        max_retries = 5
+        retry_delay = 3
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info(f"尝试第 {attempt}/{max_retries} 次访问签到页面...")
                 
-                # 重置超时设置，避免负超时值
-                self.driver.set_page_load_timeout(30)
+                # 重置超时设置，使用更长的超时时间
+                self.driver.set_page_load_timeout(60)
+                self.driver.set_script_timeout(60)
                 
                 logger.info(f"尝试访问URL: {target_url}")
                 self.driver.get(target_url)
@@ -526,29 +537,36 @@ class LeaflowAutoCheckin:
                 if "login" in current_url and "checkin" not in current_url:
                     logger.warning(f"访问签到页面时跳转到了登录页面: {current_url}")
                     logger.info("跳过登录页面，继续执行COOKIE处理...")
-                    # 不中断，继续执行后续的COOKIE处理
                 else:
                     logger.info(f"成功访问签到页面，URL: {current_url}")
                 
-                break  # 跳出尝试循环，继续执行后续流程
+                break
                 
             except Exception as e:
                 logger.warning(f"访问URL {target_url}失败: {e}")
-                # 检查是否是负超时错误
-                if "-0.005" in str(e) or "-0.004" in str(e) or "Timed out receiving message from renderer" in str(e):
-                    logger.error("检测到负超时错误，重置浏览器会话...")
-                    # 重置浏览器会话
-                    self.driver.quit()
-                    self.setup_driver()
                 
-                # 等待后重试
+                # 检查是否是负超时错误或渲染器超时
+                if ("-0.005" in str(e) or "-0.004" in str(e) or 
+                    "Timed out receiving message from renderer" in str(e) or
+                    "timeout: Timed out" in str(e)):
+                    logger.error("检测到负超时错误，尝试重置浏览器会话...")
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                    self.setup_driver()
+                    logger.info("浏览器会话已重置，准备重试")
+                elif "net::ERR" in str(e).lower():
+                    logger.warning(f"检测到网络错误 ({e})，网络可能不稳定")
+                
+                # 等待后重试，使用指数退避
                 if attempt < max_retries:
-                    logger.info(f"等待 {retry_delay} 秒后重试...")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # 指数退避
+                    wait_time = retry_delay * (1.5 ** (attempt - 1))
+                    logger.info(f"等待 {wait_time:.1f} 秒后重试...")
+                    time.sleep(wait_time)
                 else:
                     logger.error(f"经过 {max_retries} 次重试后仍无法访问签到页面")
-                    raise
+                    raise Exception(f"无法访问签到页面: {e}")
         
         # 添加登录时保存的COOKIE到当前域名
         logger.info("添加登录COOKIE到checkin域名...")
@@ -576,8 +594,8 @@ class LeaflowAutoCheckin:
             # 尝试直接访问签到首页，使用明确的URL
             logger.info("COOKIE添加完成，直接访问签到首页...")
             try:
-                # 使用明确的URL，避免重定向
-                self.driver.set_page_load_timeout(20)
+                # 使用明确的URL，避免重定向，增加超时时间
+                self.driver.set_page_load_timeout(60)
                 self.driver.get(target_url)
                 logger.info(f"成功访问签到首页，URL: {self.driver.current_url}")
             except Exception as e:
