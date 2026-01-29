@@ -22,11 +22,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install selenium webdriver-manager  # 安装 webdriver-manager
         
     - name: Install Chrome
       run: |
