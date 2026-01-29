@@ -57,17 +57,54 @@ class LeaflowAutoCheckin:
         chrome_options.add_argument('--allow-insecure-localhost')  # 允许不安全的localhost连接
         chrome_options.add_argument('--log-level=3')  # 减少Chrome日志输出
         
+        # 优化资源占用的选项
+        chrome_options.add_argument('--disable-background-timer-throttling')  # 禁用后台定时器节流
+        chrome_options.add_argument('--disable-backgrounding-occluded-windows')  # 禁用后台遮挡窗口
+        chrome_options.add_argument('--disable-renderer-backgrounding')  # 禁用渲染器后台处理
+        chrome_options.add_argument('--disable-translate')  # 禁用翻译
+        chrome_options.add_argument('--disable-notifications')  # 禁用通知
+        chrome_options.add_argument('--disable-popup-blocking')  # 禁用弹窗拦截
+        chrome_options.add_argument('--disable-default-apps')  # 禁用默认应用
+        chrome_options.add_argument('--disable-sync')  # 禁用同步
+        chrome_options.add_argument('--disable-logging')  # 禁用日志
+        chrome_options.add_argument('--disable-software-rasterizer')  # 禁用软件光栅化
+        chrome_options.add_argument('--disable-features=site-per-process')  # 禁用站点隔离
+        chrome_options.add_argument('--js-flags=--max-old-space-size=256')  # 限制JavaScript内存使用
+        
         # GitHub Actions环境配置
         if os.getenv('GITHUB_ACTIONS'):
             chrome_options.add_argument('--headless')  # 无头模式
             chrome_options.add_argument('--disable-features=VizDisplayCompositor')  # 增强无头模式稳定性
+            chrome_options.add_argument('--headless=new')  # 使用新的无头模式
+            logger.info("已启用GitHub Actions环境配置")
         
         # 使用 webdriver-manager 自动获取匹配的 ChromeDriver
         try:
             from webdriver_manager.chrome import ChromeDriverManager
             from selenium.webdriver.chrome.service import Service
-            service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            # 尝试获取当前Chrome版本并使用匹配的ChromeDriver
+            try:
+                import subprocess
+                chrome_version = subprocess.check_output(
+                    ["google-chrome", "--version"]
+                ).decode("utf-8").strip()
+                major_version = chrome_version.split(" ")[2].split(".")[0]
+                logger.info(f"检测到Chrome版本: {chrome_version}")
+                logger.info(f"使用ChromeDriver主版本: {major_version}")
+                
+                service = Service(ChromeDriverManager(driver_version=major_version).install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                
+                # 验证ChromeDriver版本
+                chromedriver_version = self.driver.capabilities['chrome']['chromedriverVersion'].split(' ')[0]
+                logger.info(f"已使用ChromeDriver版本: {chromedriver_version}")
+                
+            except Exception as e:
+                logger.warning(f"获取Chrome版本失败，使用默认配置: {e}")
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                
         except Exception as e:
             logger.warning(f"webdriver-manager 获取 ChromeDriver 失败，使用默认配置: {e}")
             self.driver = webdriver.Chrome(options=chrome_options)
@@ -75,9 +112,16 @@ class LeaflowAutoCheckin:
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
         # 设置默认超时时间
-        self.driver.set_page_load_timeout(60)  # 页面加载超时
-        self.driver.set_script_timeout(60)  # 脚本执行超时
-        # self.driver.implicitly_wait(5)  # 移除隐式等待，仅使用显式等待
+        try:
+            self.driver.set_page_load_timeout(60)  # 页面加载超时
+            self.driver.set_script_timeout(60)  # 脚本执行超时
+            logger.info(f"已设置超时时间: 页面加载60秒，脚本执行60秒")
+        except Exception as e:
+            logger.warning(f"设置超时时间时出错: {e}")
+        
+        # 移除隐式等待，仅使用显式等待
+        # self.driver.implicitly_wait(5)
+        logger.info("浏览器驱动初始化完成")
         
     def close_popup(self):
         """关闭初始弹窗"""
@@ -516,22 +560,49 @@ class LeaflowAutoCheckin:
         # 只使用明确的签到页面URL，避免跳转到登录页面
         target_url = "https://checkin.leaflow.net/index.php"
         
+        # 网络状态检查
+        try:
+            import socket
+            socket.create_connection(("checkin.leaflow.net", 443), timeout=10)
+            logger.info("网络连接正常，可以访问签到服务器")
+        except Exception as net_e:
+            logger.warning(f"网络连接检查失败: {net_e}，可能网络不稳定")
+        
         # 尝试访问签到页面，处理网络超时
-        max_retries = 5
+        max_retries = 8
         retry_delay = 3
+        start_time = time.time()
+        
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info(f"尝试第 {attempt}/{max_retries} 次访问签到页面...")
+                logger.info(f"当前耗时: {time.time() - start_time:.2f} 秒")
                 
                 # 重置超时设置，使用更长的超时时间
-                self.driver.set_page_load_timeout(60)
-                self.driver.set_script_timeout(60)
+                try:
+                    self.driver.set_page_load_timeout(120)
+                    self.driver.set_script_timeout(60)
+                    logger.debug("已重置超时设置: 页面加载120秒，脚本执行60秒")
+                except Exception as timeout_e:
+                    logger.warning(f"重置超时设置时出错: {timeout_e}")
                 
+                # 记录开始访问时间
+                access_start = time.time()
                 logger.info(f"尝试访问URL: {target_url}")
                 self.driver.get(target_url)
+                access_time = time.time() - access_start
+                logger.info(f"页面访问耗时: {access_time:.2f} 秒")
                 
+                # 检查当前URL和页面状态
                 current_url = self.driver.current_url
                 logger.info(f"当前URL: {current_url}")
+                
+                # 获取页面标题
+                try:
+                    page_title = self.driver.title
+                    logger.info(f"当前页面标题: {page_title}")
+                except Exception as title_e:
+                    logger.warning(f"获取页面标题失败: {title_e}")
                 
                 # 检查是否跳转到了登录页面
                 if "login" in current_url and "checkin" not in current_url:
@@ -540,33 +611,65 @@ class LeaflowAutoCheckin:
                 else:
                     logger.info(f"成功访问签到页面，URL: {current_url}")
                 
+                # 检查页面加载状态
+                try:
+                    page_state = self.driver.execute_script("return document.readyState")
+                    logger.info(f"页面加载状态: {page_state}")
+                    if page_state != "complete":
+                        logger.warning("页面可能未完全加载，准备继续处理")
+                except Exception as state_e:
+                    logger.warning(f"获取页面状态失败: {state_e}")
+                
                 break
                 
             except Exception as e:
-                logger.warning(f"访问URL {target_url}失败: {e}")
+                error_msg = str(e)
+                logger.warning(f"访问URL {target_url}失败: {error_msg}")
+                logger.debug(f"错误详情: {traceback.format_exc()}")
                 
-                # 检查是否是负超时错误或渲染器超时
-                if ("-0.005" in str(e) or "-0.004" in str(e) or 
-                    "Timed out receiving message from renderer" in str(e) or
-                    "timeout: Timed out" in str(e)):
-                    logger.error("检测到负超时错误，尝试重置浏览器会话...")
+                # 增强错误分类处理
+                error_lower = error_msg.lower()
+                if any(keyword in error_lower for keyword in [
+                    "-0.005", "-0.004", "timed out receiving message from renderer",
+                    "timeout: timed out", "session not created", "chrome not reachable",
+                    "no such session", "session deleted", "connection refused"
+                ]):
+                    logger.error("检测到ChromeDriver兼容性错误，重置浏览器会话...")
                     try:
                         self.driver.quit()
-                    except:
-                        pass
-                    self.setup_driver()
-                    logger.info("浏览器会话已重置，准备重试")
-                elif "net::ERR" in str(e).lower():
-                    logger.warning(f"检测到网络错误 ({e})，网络可能不稳定")
+                        logger.info("已关闭旧的浏览器会话")
+                    except Exception as quit_e:
+                        logger.warning(f"关闭浏览器会话失败: {quit_e}")
+                    
+                    # 重置浏览器会话
+                    try:
+                        self.setup_driver()
+                        logger.info("浏览器会话已重置，准备重试")
+                    except Exception as setup_e:
+                        logger.error(f"重置浏览器会话失败: {setup_e}")
+                        raise Exception(f"无法重置浏览器会话: {setup_e}")
+                
+                elif "net::err" in error_lower:
+                    logger.warning(f"网络错误 ({error_msg})，可能需要检查网络连接")
+                    # 网络错误时增加等待时间
+                    retry_delay = 5
+                elif "connection timed out" in error_lower or "timed out" in error_lower:
+                    logger.warning(f"连接超时 ({error_msg})，可能网络延迟较高")
+                elif "dns_probe_finished_nxdomain" in error_lower:
+                    logger.warning("DNS解析失败，可能是域名问题")
+                else:
+                    logger.warning(f"其他错误: {error_msg}")
                 
                 # 等待后重试，使用指数退避
                 if attempt < max_retries:
-                    wait_time = retry_delay * (1.5 ** (attempt - 1))
+                    wait_time = retry_delay * (2 ** (attempt - 1))  # 使用2倍指数退避
+                    wait_time = min(wait_time, 60)  # 最大等待60秒
                     logger.info(f"等待 {wait_time:.1f} 秒后重试...")
                     time.sleep(wait_time)
                 else:
-                    logger.error(f"经过 {max_retries} 次重试后仍无法访问签到页面")
-                    raise Exception(f"无法访问签到页面: {e}")
+                    total_time = time.time() - start_time
+                    logger.error(f"经过 {max_retries} 次重试后仍无法访问签到页面，总耗时: {total_time:.2f} 秒")
+                    raise Exception(f"无法访问签到页面: {error_msg}")
         
         # 添加登录时保存的COOKIE到当前域名
         logger.info("添加登录COOKIE到checkin域名...")
